@@ -1,0 +1,45 @@
+// HERKOMST: ~/Development/2026/zelfscanner-v2/android/build.gradle (2026-10-15).
+// Verschil: de kotlin-stdlib-pin is eruit, want die was er voor
+// react-native-video 6 en die gebruikt de lezing-app niet (video draait op de
+// beamer, niet op het device).
+buildscript {
+    ext {
+        buildToolsVersion = "33.0.0"
+        // 21 blijft staan zodat de MC18N0 (Android 5.1.1) mee kan doen, ook al
+        // is het advies de lezing op de PS20J te geven.
+        minSdkVersion = 21
+        compileSdkVersion = 33
+        // 22 met opzet: daarboven blokkeert Android cleartext http, en de
+        // POST naar de runner gaat over plain http naar een lokaal ip.
+        targetSdkVersion = 22
+
+        ndkVersion = "23.1.7779620"
+
+        // react-native-webview leest dit via safeExtGet('kotlinVersion').
+        kotlinVersion = "1.8.10"
+    }
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+    }
+}
+
+// Overgenomen uit zelfscanner-v2 (2026-10-15). Daar stond erbij dat dit voor
+// react-native-video was; het is ook nodig zonder die library. react-native-webview
+// bouwt met kotlin 1.8.10 en trekt kotlin-stdlib 1.8.10 mee, terwijl RN 0.72
+// kotlin-stdlib-jdk7/jdk8 1.7.22 meeneemt. In stdlib 1.8+ zitten de jdk7/jdk8-
+// klassen in het hoofdartifact, dus dan botsen ze als dubbele klassen
+// (checkReleaseDuplicateClasses). Eén versie forceren lost dat op.
+allprojects {
+    configurations.all {
+        resolutionStrategy {
+            force "org.jetbrains.kotlin:kotlin-stdlib:1.8.10"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.10"
+            force "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.10"
+        }
+    }
+}

@@ -1,0 +1,62 @@
+// HERKOMST: ~/Development/2026/zelfscanner-v2/android/app/build.gradle (2026-10-15).
+// Verschil: eigen applicationId (zodat beide apps naast elkaar op één device
+// kunnen staan), en de EMDK-afhankelijkheid is eruit.
+apply plugin: "com.android.application"
+apply plugin: "com.facebook.react"
+
+react {
+    // defaults zijn goed: root is .., entry is index.js
+}
+
+def enableProguardInReleaseBuilds = false
+def jscFlavor = 'org.webkit:android-jsc:+'
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+    compileSdkVersion rootProject.ext.compileSdkVersion
+
+    namespace "com.zelfscannerlezing"
+    defaultConfig {
+        applicationId "com.zelfscannerlezing"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "0.1"
+        ndk {
+            // PS20J is arm64-v8a, MC18N0 armeabi-v7a. Beide erin, een device
+            // negeert de .so-bestanden die het niet nodig heeft.
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
+    }
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            // Eén device, geen Play Store: dezelfde debug-sleutel, net als v2.
+            signingConfig signingConfigs.debug
+            minifyEnabled enableProguardInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+}
+
+dependencies {
+    implementation("com.facebook.react:react-android")
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+    } else {
+        implementation jscFlavor
+    }
+}
+
+apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)

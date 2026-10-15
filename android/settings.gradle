@@ -1,0 +1,15 @@
+// HERKOMST: ~/Development/2026/zelfscanner-v2/android/settings.gradle (2026-10-15).
+// Verschil: andere projectnaam, en de Zebra-EMDK-repository is eruit -- de
+// lezing-app gebruikt geen EMDK (geen imager, geen cradle, geen kiosk).
+rootProject.name = 'ZelfscannerLezing'
+apply from: file("../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesSettingsGradle(settings)
+include ':app'
+includeBuild('../node_modules/@react-native/gradle-plugin')
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+    repositories {
+        google()
+        mavenCentral()
+    }
+}

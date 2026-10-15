@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<!--
+  HERKOMST: ~/Development/2026/zelfscanner-v2/pack/index.html (2026-10-15).
+  De laad-truc (elk js-bestand met een synchrone XHR ophalen en evallen) is
+  ongewijzigd overgenomen: <script src> laadt niet op de MC18N0. De inhoud is
+  nieuw -- dit is het scherm van Sjef, niet de speurtocht.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  /* Geen CSS-variabelen en geen inset/flex-gap: Chromium 46 (Android 5.1).
+     top/left/right/bottom in plaats van inset, net als in v2. */
+  html, body {
+    margin: 0; padding: 0; height: 100%; background: #000; color: #fff;
+    overflow: hidden; -webkit-user-select: none; user-select: none;
+    font-family: -apple-system, "Roboto", "Helvetica Neue", sans-serif;
+  }
+
+  /* De note, beeldvullend. Dit is het enige dat Sjef echt nodig heeft, dus het
+     staat vooraan en blijft staan als het netwerk wegvalt. */
+  #note {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 22px;
+    display: -webkit-box; display: flex;
+    -webkit-box-align: center; -webkit-align-items: center; align-items: center;
+    -webkit-box-pack: center; -webkit-justify-content: center; justify-content: center;
+    padding: 10px 12px; box-sizing: border-box;
+    text-align: center; line-height: 1.25; font-weight: 600;
+    overflow: hidden;
+  }
+  /* Een losse laag eronder voor de meting: zie fitNote() in lezing.js. */
+  #note > span { display: block; width: 100%; }
+
+  /* Wachtstand voordat er gescand is, en het lege scherm. Grijs, zodat het
+     niet op een note lijkt. */
+  #note.leeg > span { color: #667; font-weight: 500; }
+
+  /* Statusregel: klein en onderaan. Alleen voor Sjef: welk frame, en of de
+     runner antwoordt. Nooit beeldvullend, nooit rood over de hele breedte --
+     een melding mag een lezing niet overnemen. */
+  #status {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 22px;
+    font: 11px/22px monospace; color: #566; background: #060608;
+    padding: 0 6px; box-sizing: border-box; white-space: nowrap; overflow: hidden;
+  }
+  #status .frames { float: right; color: #789; }
+  #status .link { color: #3a5; }
+  #status .link.weg { color: #e0a33a; }
+
+  /* Korte melding (onbekende barcode). Zweeft boven de statusregel en
+     verdwijnt zelf weer. */
+  #toast {
+    position: absolute; left: 6px; right: 6px; bottom: 28px; z-index: 10;
+    background: rgba(224, 163, 58, 0.92); color: #000;
+    font: 600 13px/1.3 sans-serif; padding: 6px 8px; border-radius: 4px;
+    text-align: center; display: none;
+  }
+  #toast.show { display: block; }
+
+  /* Alleen zichtbaar als het pack zelf niet laadt, anders blijft het scherm
+     zwart zonder uitleg (zelfde reden als in v2). */
+  #debug {
+    position: absolute; top: 6px; left: 6px; right: 6px; z-index: 50;
+    color: #7CFC00; font: 12px/1.3 monospace; display: none; white-space: pre-line;
+  }
+  #debug.show { display: block; }
+</style>
+</head>
+<body>
+  <div id="note" class="leeg"><span>Klaar. Scan een barcode.</span></div>
+  <div id="toast"></div>
+  <div id="status"></div>
+  <div id="debug">pack laden…</div>
+  <script>
+    // <script src="lezing.js"> laadt NIET op deze WebView (Android 5.1 /
+    // Chromium 46: lokale sub-resources van file:// worden geblokkeerd, ook
+    // met allowFileAccess aan). XHR naar lokale bestanden werkt wel, dus we
+    // halen de bron als tekst op en evallen die. Met de hand bevestigd op het
+    // device 2026-08-06 (zie zelfscanner-v2) -- niet terugdraaien naar
+    // <script src>.
+    (function () {
+      var debugEl = document.getElementById('debug');
+
+      function loadLocal(path) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', path, false);
+        // file:// geeft geen Content-Type terug, dus UTF-8 forceren in plaats
+        // van de WebView laten gokken (de notes zijn Nederlands).
+        xhr.overrideMimeType('text/plain; charset=utf-8');
+        xhr.send();
+        if (!xhr.responseText) {
+          debugEl.textContent = path + ' leeg of niet gevonden (status ' + xhr.status + ')';
+          debugEl.className = 'show';
+          return false;
+        }
+        (0, eval)(xhr.responseText);
+        return true;
+      }
+
+      try {
+        // fx.js eerst: lezing.js gebruikt ZSFx voor het overvloeien van de note.
+        var files = ['fx.js', 'lezing.js'];
+        for (var i = 0; i < files.length && loadLocal(files[i]); i++) {}
+        if (window.ZSLezing) {
+          window.ZSLezing.start(function (melding) {
+            debugEl.textContent = melding;
+            debugEl.className = 'show';
+          });
+        }
+      } catch (e) {
+        debugEl.textContent = 'pack laden MISLUKT: ' + e.message;
+        debugEl.className = 'show';
+      }
+    })();
+  </script>
+</body>
+</html>

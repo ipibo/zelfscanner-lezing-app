@@ -1,0 +1,33 @@
+<!-- HERKOMST: zelfscanner-v2/android/app/src/main/AndroidManifest.xml (2026-10-15).
+     Eruit: de HOME-intent (de lezing-app mag nooit de launcher van een
+     speurtocht-device overnemen), de BootReceiver, de device-admin van de
+     kiosk, de cradle-accessibility-service en alles van EMDK.
+     usesCleartextTraffic staat er expliciet in voor de POST naar de runner. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Het pack staat op /sdcard; bij targetSdk 22 is dit install-granted. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+
+    <application
+      android:name=".MainApplication"
+      android:label="@string/app_name"
+      android:icon="@mipmap/ic_launcher"
+      android:roundIcon="@mipmap/ic_launcher_round"
+      android:allowBackup="false"
+      android:usesCleartextTraffic="true"
+      android:theme="@style/AppTheme">
+      <activity
+        android:name=".MainActivity"
+        android:label="@string/app_name"
+        android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+        android:launchMode="singleTask"
+        android:windowSoftInputMode="adjustResize"
+        android:exported="true">
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+      </activity>
+    </application>
+</manifest>
