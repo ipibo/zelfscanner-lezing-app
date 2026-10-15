@@ -73,6 +73,10 @@ Zonder `--runner` pakt het script het ip van deze laptop met poort 8080.
 
 ## Bouwen en installeren
 
+Stap voor stap, inclusief adb over wifi, meerdere apparaten tegelijk en wat te
+doen als het misgaat: [docs/installeren-op-de-scanners.md](docs/installeren-op-de-scanners.md).
+Kort:
+
 ```bash
 npm install
 npm run pack:check                       # ES5-gate op alles in pack/
