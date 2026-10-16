@@ -52,8 +52,6 @@ window.ZSLezing = (function () {
   var PROBE_WEG_MS = 4000; // zonder verbinding: zo vaak opnieuw zoeken
   var PROBE_OK_MS = 15000; // met verbinding: af en toe controleren
   var TOAST_MS = 2600;
-  var NOTE_MAX_PX = 96;
-  var NOTE_MIN_PX = 11;
 
   var noteEl = null;
   var noteSpan = null;
@@ -213,39 +211,10 @@ window.ZSLezing = (function () {
 
   // -------------------------------------------------------------------- beeld
 
-  /**
-   * De note zo groot als hij kan. Geen `vw` of clamp(): op de MC18N0 is het
-   * scherm 320x320 en op de PS20J veel groter, dus meten en krimpen tot het
-   * past. Krimpt met stappen van 10%, hoogstens 40 keer.
-   *
-   * Zowel hoogte als breedte meten: een lang woord dat niet kan afbreken
-   * ("zelfscanner") past wel in de hoogte en loopt toch het scherm uit. Gezien
-   * op de PS20J, 2026-10-15.
-   */
-  function pasNoteAan() {
-    var ruimteH = noteEl.clientHeight - 20;
-    var ruimteB = noteEl.clientWidth - 16;
-    var maat = Math.min(NOTE_MAX_PX, Math.floor(noteEl.clientHeight * 0.4));
-    if (maat < NOTE_MIN_PX) {
-      maat = NOTE_MIN_PX;
-    }
-    noteSpan.style.fontSize = maat + 'px';
-    var rondes = 0;
-    while (
-      maat > NOTE_MIN_PX &&
-      rondes < 40 &&
-      (noteSpan.offsetHeight > ruimteH || noteSpan.scrollWidth > ruimteB)
-    ) {
-      maat = Math.floor(maat * 0.9);
-      noteSpan.style.fontSize = maat + 'px';
-      rondes++;
-    }
-  }
-
   function zetNote(html, isLeeg) {
     noteSpan.innerHTML = html;
     noteEl.className = isLeeg ? 'leeg' : '';
-    pasNoteAan();
+    noteEl.scrollTop = 0;
     // Alleen overvloeien, geen beweging: dit is tekst die iemand staat te
     // lezen terwijl hij praat.
     if (window.ZSFx) {
@@ -713,14 +682,6 @@ window.ZSLezing = (function () {
         } else if (k >= 96 && k <= 105) {
           buffer += String(k - 96);
         }
-      },
-      false
-    );
-
-    window.addEventListener(
-      'resize',
-      function () {
-        pasNoteAan();
       },
       false
     );

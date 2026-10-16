@@ -19,22 +19,23 @@
   }
 
   /* De note, beeldvullend. Dit is het enige dat Sjef echt nodig heeft, dus het
-     staat vooraan en blijft staan als het netwerk wegvalt. */
+     staat vooraan en blijft staan als het netwerk wegvalt. Vaste maat,
+     links uitgelijnd; past hij niet, dan scrollt hij. Geen flex-centrering:
+     dan valt de bovenkant buiten de scrollbare ruimte. */
   #note {
     position: absolute; top: 0; left: 0; right: 0; bottom: 22px;
-    display: -webkit-box; display: flex;
-    -webkit-box-align: center; -webkit-align-items: center; align-items: center;
-    -webkit-box-pack: center; -webkit-justify-content: center; justify-content: center;
     padding: 10px 12px; box-sizing: border-box;
-    text-align: center; line-height: 1.25; font-weight: 600;
-    overflow: hidden;
+    background: #fff; color: #000;
+    background-image: linear-gradient(to top, #94c4ec, #fff);
+    text-align: left; font-size: 20pt; line-height: 1.6; font-weight: 500;
+    overflow-y: scroll; overflow-x: hidden; -webkit-overflow-scrolling: touch;
+    word-wrap: break-word;
   }
-  /* Een losse laag eronder voor de meting: zie fitNote() in lezing.js. */
   #note > span { display: block; width: 100%; }
 
   /* Wachtstand voordat er gescand is, en het lege scherm. Grijs, zodat het
      niet op een note lijkt. */
-  #note.leeg > span { color: #667; font-weight: 500; }
+  #note.leeg > span { color: #667; font-weight: 400; }
 
   /* Statusregel: klein en onderaan. Alleen voor Sjef: welk frame, en of de
      runner antwoordt. Nooit beeldvullend, nooit rood over de hele breedte --
@@ -62,7 +63,7 @@
      zwart zonder uitleg (zelfde reden als in v2). */
   #debug {
     position: absolute; top: 6px; left: 6px; right: 6px; z-index: 50;
-    color: #7CFC00; font: 12px/1.3 monospace; display: none; white-space: pre-line;
+    color: #7CFC00; background: #000; font: 12px/1.3 monospace; display: none; white-space: pre-line;
   }
   #debug.show { display: block; }
 </style>
