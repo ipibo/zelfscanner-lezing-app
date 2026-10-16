@@ -16,11 +16,15 @@
  *      en stuurt het beeld naar de beamer). Mislukt de POST, dan rekent dit
  *      bestand het frame zelf uit -- volgend frame, na het laatste weer het
  *      eerste -- en trekt bij zodra de verbinding terug is;
- *   4. zoekt de runner op twee adressen: 127.0.0.1 (usb-kabel met
- *      `adb reverse tcp:8080 tcp:8080`) en het lan-adres uit settings.json.
- *      /api/hello is de health check;
+ *   4. zoekt de runner op: 127.0.0.1 (usb-kabel met
+ *      `adb reverse tcp:8080 tcp:8080`), het adres van de koppel-barcode en
+ *      het lan-adres uit settings.json. /api/hello is de health check;
  *   5. laat onderaan in één regel zien of de verbinding er is. Klein, want een
- *      storing mag de lezing niet overnemen (docs/04, spoor 2).
+ *      storing mag de lezing niet overnemen (docs/04, spoor 2);
+ *   6. werkt zonder adb: de koppel-barcode (`ZSL:<ip>:<poort>`, op /koppel van
+ *      de runner) zet het adres van de laptop, en de app haalt de actieve
+ *      lezing zelf op via /api/pack zodra `rev` in /api/hello verandert. Beide
+ *      gaan in localStorage, zodat ze een herstart overleven.
  *
  * ES5 / Chromium 46: geen const, geen let, geen pijlfuncties, geen template
  * literals, geen trailing comma's, geen CSS-variabelen. De MC18N0 (Android
@@ -31,6 +35,12 @@
 window.ZSLezing = (function () {
   var MANIFEST_FILE = 'lezing.json';
   var SETTINGS_FILE = 'settings.json';
+
+  // Koppel-barcode van runner/public/koppel.html: `ZSL:192.168.1.23:8080`.
+  var KOPPEL_PREFIX = 'ZSL:';
+  var OPSLAG_RUNNER = 'zsl.runner'; // 'http://192.168.1.23:8080'
+  var OPSLAG_LEZING = 'zsl.lezing'; // {rev, bestand, manifest}
+  var PACK_TIMEOUT_MS = 5000;
 
   // De usb-noodoplossing uit docs/04: scanner aan de laptop,
   // `adb reverse tcp:8080 tcp:8080`, helemaal geen netwerk nodig. Staat
@@ -59,6 +69,10 @@ window.ZSLezing = (function () {
   var verbonden = false;
   var probeTimer = null;
   var onFout = null;
+  var gekoppeld = null; // adres van de koppel-barcode
+  var lezingRev = null; // rev van de lezing die nu geladen is, als die van de runner kwam
+  var bestandStempel = ''; // vingerafdruk van lezing.json op het filesystem
+  var bezigMetOphalen = false;
 
   // De stand zoals die nu in beeld staat. Spiegelt `standVoorClients()` in
   // runner/server.js, zodat het lokale geval en het server-geval hetzelfde
@@ -79,7 +93,7 @@ window.ZSLezing = (function () {
   }
 
   /** Lokaal bestand synchroon inlezen. Zelfde truc als in index.html. */
-  function leesLokaal(path) {
+  function leesLokaalTekst(path) {
     var xhr = new XMLHttpRequest();
     try {
       xhr.open('GET', path, false);
@@ -88,14 +102,54 @@ window.ZSLezing = (function () {
     } catch (e) {
       return null;
     }
-    if (!xhr.responseText) {
+    return xhr.responseText || null;
+  }
+
+  function leesJson(tekstje) {
+    if (!tekstje) {
       return null;
     }
     try {
-      return JSON.parse(xhr.responseText);
-    } catch (e2) {
+      return JSON.parse(tekstje);
+    } catch (e) {
       return null;
     }
+  }
+
+  function leesLokaal(path) {
+    return leesJson(leesLokaalTekst(path));
+  }
+
+  /**
+   * localStorage, maar zonder te vallen: in een WebView zonder domStorage of
+   * met een vol geheugen gooit het. Dan werkt koppelen alleen tot de herstart.
+   */
+  function opslagLees(sleutel) {
+    try {
+      return leesJson(window.localStorage.getItem(sleutel));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function opslagSchrijf(sleutel, waarde) {
+    try {
+      window.localStorage.setItem(sleutel, JSON.stringify(waarde));
+    } catch (e) {}
+  }
+
+  /**
+   * Korte vingerafdruk (djb2). Zo zien we of iemand met adb een nieuwe
+   * lezing.json heeft gepusht sinds de lezing van de runner is opgeslagen:
+   * dan wint het bestand.
+   */
+  function stempel(tekstje) {
+    var h = 5381;
+    tekstje = tekstje || '';
+    for (var i = 0; i < tekstje.length; i++) {
+      h = ((h << 5) + h + tekstje.charCodeAt(i)) | 0;
+    }
+    return tekstje.length + '-' + (h >>> 0).toString(16);
   }
 
   function tekst(v) {
@@ -136,6 +190,14 @@ window.ZSLezing = (function () {
       });
     }
     return out;
+  }
+
+  function laadManifest(raw) {
+    manifest = normaliseer(raw);
+    slideOpBarcode = {};
+    for (var i = 0; i < manifest.slides.length; i++) {
+      slideOpBarcode[manifest.slides[i].barcode] = manifest.slides[i];
+    }
   }
 
   /** Naar de HUD in App.tsx (alleen zichtbaar met SHOW_DEBUG_INFO = true). */
@@ -328,6 +390,99 @@ window.ZSLezing = (function () {
   }
 
   /**
+   * De actieve lezing van de runner ophalen en bewaren. Zo komt een nieuwe
+   * lezing op de scanner zonder adb: in de editor of op de operator-pagina
+   * een andere lezing actief zetten is genoeg.
+   */
+  function haalLezing() {
+    if (!base || bezigMetOphalen) {
+      return;
+    }
+    bezigMetOphalen = true;
+    vraag(
+      'GET',
+      base + '/api/pack',
+      null,
+      PACK_TIMEOUT_MS,
+      function (data) {
+        bezigMetOphalen = false;
+        if (!data || !data.slides || !data.slides.length) {
+          return;
+        }
+        var eerder = manifest;
+        laadManifest(data);
+        lezingRev = data.rev || null;
+        opslagSchrijf(OPSLAG_LEZING, {
+          rev: lezingRev,
+          bestand: bestandStempel,
+          manifest: data
+        });
+        if (!eerder || eerder.title !== manifest.title) {
+          zetNote(
+            (manifest.title ? manifest.title + '<br>' : '') + 'Scan een barcode.',
+            true
+          );
+        }
+        toon('lezing bijgewerkt');
+        haalStand();
+      },
+      function () {
+        bezigMetOphalen = false;
+      }
+    );
+  }
+
+  /** De adressen om te proberen, in volgorde. Dubbele eruit. */
+  function bouwBases() {
+    var lijst = [];
+    function voeg(adres) {
+      if (typeof adres !== 'string' || adres === '') {
+        return;
+      }
+      adres = adres.replace(/\/+$/, '');
+      for (var k = 0; k < lijst.length; k++) {
+        if (lijst[k] === adres) {
+          return;
+        }
+      }
+      lijst.push(adres);
+    }
+    if (settings.usb !== false) {
+      voeg(USB_BASE);
+    }
+    // De koppel-barcode is het laatst bewust gekozen adres, dus vóór
+    // settings.json: dat kan nog van een ander netwerk zijn.
+    voeg(gekoppeld);
+    voeg(settings.runner);
+    if (settings.runners && settings.runners.length) {
+      for (var j = 0; j < settings.runners.length; j++) {
+        voeg(settings.runners[j]);
+      }
+    }
+    bases = lijst;
+  }
+
+  /** Een gescande koppel-barcode: `ZSL:192.168.1.23:8080`. */
+  function koppel(rest) {
+    rest = rest.replace(/^https?:\/\//, '');
+    if (!/^[A-Za-z0-9.\-]+:[0-9]{1,5}$/.test(rest)) {
+      toon('koppel-barcode niet te lezen');
+      return;
+    }
+    gekoppeld = 'http://' + rest;
+    opslagSchrijf(OPSLAG_RUNNER, gekoppeld);
+    bouwBases();
+    base = null;
+    zetVerbinding(false);
+    toon('laptop ' + rest + ' zoeken…');
+    clearTimeout(probeTimer);
+    zoekRunner(function (gelukt) {
+      toon(gelukt ? 'gekoppeld met ' + rest : 'laptop ' + rest + ' antwoordt niet');
+      probeTimer = setTimeout(hartslag, gelukt ? PROBE_OK_MS : PROBE_WEG_MS);
+    });
+  }
+
+  /**
    * Adressen aflopen tot er één antwoordt. Geeft het eerste werkende adres,
    * dus usb (127.0.0.1) wint van het lan: een kabel valt niet uit.
    */
@@ -344,13 +499,15 @@ window.ZSLezing = (function () {
       var kandidaat = bases[i++];
       vraag(
         'GET',
-        kandidaat + '/api/hello',
+        kandidaat + '/api/hello?van=scanner',
         null,
         HELLO_TIMEOUT_MS,
-        function () {
+        function (data) {
           var terug = !verbonden;
           zetVerbinding(true, kandidaat);
-          if (terug) {
+          if (data && data.rev && data.rev !== lezingRev) {
+            haalLezing();
+          } else if (terug) {
             haalStand();
           }
           if (klaar) {
@@ -423,8 +580,14 @@ window.ZSLezing = (function () {
     if (code === '') {
       return;
     }
+    // Vóór de manifest-check: een nieuwe scanner zonder lezing moet ook te
+    // koppelen zijn.
+    if (code.indexOf(KOPPEL_PREFIX) === 0) {
+      koppel(code.slice(KOPPEL_PREFIX.length));
+      return;
+    }
     if (!manifest) {
-      toon('lezing niet geladen');
+      toon('nog geen lezing: scan de koppel-barcode op de laptop');
       return;
     }
 
@@ -487,45 +650,41 @@ window.ZSLezing = (function () {
     statusEl = el('status');
     toastEl = el('toast');
 
-    var raw = leesLokaal(MANIFEST_FILE);
-    if (!raw || !raw.slides || !raw.slides.length) {
-      var melding = MANIFEST_FILE + ' niet gevonden of zonder slides';
-      if (onFout) {
-        onFout(melding);
-      }
-      zetNote('Geen lezing op dit apparaat.', true);
-      toonStatus();
-      return;
-    }
-    manifest = normaliseer(raw);
-    for (var i = 0; i < manifest.slides.length; i++) {
-      slideOpBarcode[manifest.slides[i].barcode] = manifest.slides[i];
+    // De lezing: lezing.json van het filesystem (gepusht met adb), of de
+    // lezing die de app zelf bij de runner heeft opgehaald. Die laatste wint,
+    // tenzij lezing.json daarna veranderd is -- dan heeft iemand met adb een
+    // nieuwe gepusht.
+    var bestandTekst = leesLokaalTekst(MANIFEST_FILE);
+    bestandStempel = stempel(bestandTekst);
+    var raw = leesJson(bestandTekst);
+    var bewaard = opslagLees(OPSLAG_LEZING);
+    if (
+      bewaard &&
+      bewaard.manifest &&
+      (!raw || bewaard.bestand === bestandStempel)
+    ) {
+      raw = bewaard.manifest;
+      lezingRev = bewaard.rev || null;
     }
 
     // settings.json is van het apparaat, niet van de lezing: het lan-adres van
     // de laptop staat daar, zodat hetzelfde pack in een andere zaal alleen een
-    // ander settings.json nodig heeft. Ontbreekt het bestand, dan blijft usb
-    // over -- dat werkt altijd.
+    // ander settings.json nodig heeft. Ontbreekt het bestand, dan blijven usb
+    // en de koppel-barcode over.
     settings = leesLokaal(SETTINGS_FILE) || {};
-    bases = [];
-    if (settings.usb !== false) {
-      bases.push(USB_BASE);
-    }
-    if (typeof settings.runner === 'string' && settings.runner !== '') {
-      bases.push(settings.runner.replace(/\/+$/, ''));
-    }
-    if (settings.runners && settings.runners.length) {
-      for (var j = 0; j < settings.runners.length; j++) {
-        if (typeof settings.runners[j] === 'string' && settings.runners[j] !== '') {
-          bases.push(settings.runners[j].replace(/\/+$/, ''));
-        }
-      }
-    }
+    var opgeslagen = opslagLees(OPSLAG_RUNNER);
+    gekoppeld = typeof opgeslagen === 'string' ? opgeslagen : null;
+    bouwBases();
 
-    zetNote(
-      (manifest.title ? manifest.title + '<br>' : '') + 'Scan een barcode.',
-      true
-    );
+    if (raw && raw.slides && raw.slides.length) {
+      laadManifest(raw);
+      zetNote(
+        (manifest.title ? manifest.title + '<br>' : '') + 'Scan een barcode.',
+        true
+      );
+    } else {
+      zetNote('Geen lezing.<br>Scan de koppel-barcode op de laptop.', true);
+    }
     toonStatus();
 
     window.onNativeScan = scan;

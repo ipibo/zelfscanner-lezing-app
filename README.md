@@ -40,12 +40,28 @@ aan sleutelt zit in `pack/`, dus pushen in plaats van opnieuw bouwen.
    eerste) en bijtrekken zodra de verbinding terug is. Onderaan het scherm
    staat in één kleine regel of de runner antwoordt.
 
-De runner wordt op twee adressen gezocht, in deze volgorde:
+De runner wordt op drie adressen gezocht, in deze volgorde:
 
 1. `http://127.0.0.1:8080` -- usb-kabel met `adb reverse tcp:8080 tcp:8080`.
-   Staat voorop omdat een kabel niet uitvalt.
-2. het adres uit `settings.json` op het device, bijvoorbeeld
+   Staat voorop omdat een kabel niet uitvalt. Let op: op de MC18N0 verbreekt
+   `adb reverse` de usb-verbinding (gezien 2026-10-16), daar werkt dit niet.
+2. het adres van de koppel-barcode (zie hieronder).
+3. het adres uit `settings.json` op het device, bijvoorbeeld
    `http://192.168.1.50:8080`.
+
+## Zonder adb: koppelen met een barcode
+
+Op `http://localhost:8080/koppel` van de runner staat een barcode
+`ZSL:<ip>:<poort>`. Scan die met de app: het adres gaat in localStorage en
+blijft na een herstart. Daarna haalt de app zelf de actieve lezing op via
+`/api/pack`, zodra `rev` in `/api/hello` verandert. Een andere lezing op de
+scanner zetten is dan: hem actief zetten in de editor of op de operator-pagina.
+
+Een lezing die met adb is gepusht wint van de opgehaalde zodra `lezing.json`
+op het device verandert.
+
+Getest op de MC18N0 (2026-10-16): koppelen, app herstarten, lezing wisselen.
+Nog niet: het hele apparaat uit en aan.
 
 `/api/hello` is de health check. Die loopt elke 15 seconden, en elke 4 seconden
 zolang er geen verbinding is. Op de statusregel tikken zoekt meteen opnieuw.
